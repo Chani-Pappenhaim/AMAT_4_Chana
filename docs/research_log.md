@@ -39,3 +39,26 @@ this image is "no strong drift/charging evidence" with medium confidence
 **Next experiment:** Source/specimen/DOI-safe split of EMPS (test quarantine),
 then a first training-free real->synthetic vertical slice
 (`generator_v0`, deterministic, seeded).
+
+## 2026-08-19 — Data -> generator input (source-safe split + loader)
+
+**Question:** how to guarantee the generator never touches a TEST-split image.
+
+**What was found:** EMPS ships its own train.csv/test.csv (by filename, 366/99
+images). Verified these are already DOI-safe - zero DOI overlap. Reused this
+instead of building a split from scratch.
+
+**What was built:**
+- `src/data/split.py::build_source_split` - carves a validation set out of the
+  official TRAIN pool by DOI (not by image), writes
+  `configs/experiments/source_split_v1.json`.
+- `src/data/loader.py::load_generator_source(source_id)` - the only path into
+  the generator; asserts the id is not in TEST_IDS.
+
+**Result:** train 310 images / 210 sources, validation 56 images / 37 sources,
+test 99 images / 75 sources. Zero cross-split source overlap (assertion
+passes). Rejection of a real TEST id verified to actually raise.
+
+**Conclusion:** split + loader gate are in place and tested.
+**Next experiment:** build `generator_v0` using the 3 selected TRAIN dev
+sources, then run the "does source image matter?" comparison.
