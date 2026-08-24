@@ -1,16 +1,6 @@
-"""Generation-lineage guard against hidden-test leakage.
-
-`loader.load_generator_source()` already refuses a single TEST image id. This
-module generalizes that guarantee to any *lineage* - the full list of source
-ids and/or DOIs that fed a generated artifact (a patch bank, a synthetic
-image, a downstream training run). Any code that assembles such a lineage
-must call `assert_lineage_is_test_safe()` on it before that artifact is used
-further.
-
-Per the void rule (THEORY_G4 section 9 / AMAT4_STUDENTS Layer 1 rule 12): if
-a generated image's source touches a test group, the run is void - not
-flagged, void. This module is what makes that enforceable in code rather
-than a rule someone has to remember.
+"""Lineage guard against hidden-test leakage - generalizes loader.py's
+single-image TEST check to any list of source ids/DOIs. The void rule:
+if a lineage touches TEST, the run is void.
 """
 import json
 import os
@@ -30,13 +20,7 @@ class TestLeakageError(AssertionError):
 
 
 def assert_lineage_is_test_safe(lineage_ids):
-    """lineage_ids: an iterable of image ids and/or DOIs that contributed,
-    directly or indirectly, to a generated artifact.
-
-    Raises TestLeakageError naming every contaminated entry if any of them
-    is a TEST image id, is itself a TEST DOI, or (via the group_of mapping)
-    belongs to a TEST DOI. Passes silently otherwise.
-    """
+    """Raise TestLeakageError if any id/DOI in lineage_ids belongs to TEST."""
     contaminated = [
         entry for entry in lineage_ids
         if entry in TEST_IDS or entry in TEST_SOURCES or _GROUP_OF.get(entry) in TEST_SOURCES
