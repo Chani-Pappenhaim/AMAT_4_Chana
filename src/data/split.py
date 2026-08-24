@@ -63,9 +63,10 @@ def build_source_split(emps_dir, out_path, val_fraction=0.15, seed=0):
 
 
 if __name__ == "__main__":
+    _repo_root = os.path.join(os.path.dirname(__file__), "..", "..")
     manifest = build_source_split(
-        emps_dir=os.path.join("..", "..", "AMAT", "amat4-week1", "emps"),
-        out_path=os.path.join("configs", "experiments", "source_split_v1.json"),
+        emps_dir=os.path.join(_repo_root, "..", "AMAT", "amat4-week1", "emps"),
+        out_path=os.path.join(_repo_root, "configs", "experiments", "source_split_v1.json"),
     )
     print(f"train: {len(manifest['train_ids'])} images / {len(manifest['train_sources'])} sources")
     print(f"validation: {len(manifest['validation_ids'])} images / {len(manifest['validation_sources'])} sources")
