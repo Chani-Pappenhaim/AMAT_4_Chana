@@ -9,3 +9,7 @@ __pycache__/
 .venv/
 venv/
 *.pyc
+
+# personal working files - never push
+CLAUDE.md
+personal/
