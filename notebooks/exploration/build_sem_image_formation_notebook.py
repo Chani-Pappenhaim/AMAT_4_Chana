@@ -170,7 +170,7 @@ md("""## 8. Questions / uncertainties
 
 nb["cells"] = cells
 
-out_path = "AMAT4_D1_SEM_image_formation.ipynb"
+out_path = "sem_image_formation.ipynb"
 with open(out_path, "w", encoding="utf-8") as f:
     nbf.write(nb, f)
 

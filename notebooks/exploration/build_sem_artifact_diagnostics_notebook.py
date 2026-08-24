@@ -184,7 +184,7 @@ are separate, both-required criteria.""")
 
 nb["cells"] = cells
 
-out_path = "AMAT4_D2_SEM_artifacts_statistics.ipynb"
+out_path = "sem_artifact_diagnostics.ipynb"
 with open(out_path, "w", encoding="utf-8") as f:
     nbf.write(nb, f)
 

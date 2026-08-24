@@ -12,10 +12,10 @@ noise structure) to be considered successful.
 
 **What was changed/built:**
 - Downloaded EMPS (465 real images, 322 source papers, MIT license).
-- Built `AMAT4_D1_SEM_image_formation.ipynb`: dataset examples, per-image
+- Built `sem_image_formation.ipynb`: dataset examples, per-image
   statistics over a 40-image sample, histograms, zoomed crops, SEM-vs-photo
   comparison table.
-- Built `AMAT4_D2_SEM_artifacts_statistics.ipynb`: row/column intensity
+- Built `sem_artifact_diagnostics.ipynb`: row/column intensity
   profile, Sobel gradient magnitude, local mean/variance (9x9 window), FFT
   magnitude, plus an independent pedagogical mini-experiment (synthetic line
   shift / drift / low-dose Poisson noise, explicitly labeled as unvalidated).

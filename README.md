@@ -10,9 +10,10 @@ Current research question: Under limited real data, when and why do training-fre
 Current status: Week 2 (per general team plan v4.0, 18 Aug 2026). Completed
   Week 1 retrospective work on real EMPS data (image-formation baseline +
   artifact/noise diagnostics). Not yet started: source-safe split, generator_v0.
-How to run: see notebooks/week_01 for the two completed notebooks. Each is
-  self-contained - installs its own dependencies at the top and downloads/reads
-  from a local emps/ folder (not committed - see .gitignore).
+How to run: see notebooks/exploration for the initial EDA notebooks and
+  notebooks/pipeline for the data-pipeline notebooks. Each is self-contained -
+  installs its own dependencies at the top and downloads/reads from a local
+  emps/ folder (not committed - see .gitignore).
 Main results: see docs/research_log.md and docs/findings.md.
 ```
 
