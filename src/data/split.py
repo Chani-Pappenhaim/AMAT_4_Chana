@@ -40,6 +40,9 @@ def build_source_split(emps_dir, out_path, val_fraction=0.15, seed=0):
     val_ids = sorted(i for i in official_train_ids if doi_of.get(i) in set(val_dois))
     test_ids = sorted(official_test_ids)
 
+    all_ids = train_ids + val_ids + test_ids
+    group_of = {image_id: doi_of[image_id] for image_id in all_ids if image_id in doi_of}
+
     manifest = {
         "seed": seed,
         "val_fraction": val_fraction,
@@ -49,6 +52,7 @@ def build_source_split(emps_dir, out_path, val_fraction=0.15, seed=0):
         "train_ids": train_ids,
         "validation_ids": val_ids,
         "test_ids": test_ids,
+        "group_of": group_of,
     }
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
