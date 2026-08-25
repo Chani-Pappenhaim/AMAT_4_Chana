@@ -4,6 +4,12 @@ Given a noisy query patch and a finite bank of clean patches (from the same
 source image), the Bayes-optimal denoised estimate under a Gaussian-kernel
 prior is a similarity-weighted average of the bank: patches closer to the
 query get more weight, patches far from it get almost none.
+
+Why training-free: a neural denoiser learns its weights through many
+gradient-descent steps over a large dataset, which takes hours. Here the
+"model" is just the patch bank itself - a finite set of real patches - and
+the weighted-average formula is the exact, direct solution for that model,
+computed once with no optimization loop and no learned parameters.
 """
 import numpy as np
 
@@ -59,9 +65,18 @@ if __name__ == "__main__":
     assert np.allclose(bf_weights, weights)
     print("brute-force verification passed")
 
-    # Collapse-to-copy check: as sigma shrinks, the weight concentrates on
-    # the single nearest patch - proves the "copying" failure mode exists
-    # and shows where it kicks in.
-    for small_sigma in [1.0, 0.1, 0.01]:
-        _, w = denoise_patch(query, bank, small_sigma)
-        print(f"sigma={small_sigma}: weights={w}, max weight={w.max():.4f}")
+    # Collapse-to-copy check: needs a bank with one UNIQUE nearest patch -
+    # the earlier bank had two tied-equidistant patches, which can never
+    # show single-patch collapse no matter how small sigma gets.
+    asym_bank = np.array([[0.0, 0.0], [8.0, 8.0], [9.5, 9.5], [20.0, 20.0]])
+    asym_query = np.array([9.0, 9.0])  # patch index 2 is uniquely closest
+
+    print("\ncollapse-to-copy sweep (asymmetric bank, one unique nearest patch):")
+    for small_sigma in [5.0, 1.0, 0.5, 0.1, 0.01]:
+        _, w = denoise_patch(asym_query, asym_bank, small_sigma)
+        print(f"sigma={small_sigma:>4}: weights={np.round(w, 4)}, max weight={w.max():.4f}")
+    # As sigma shrinks, weight on index 2 (the unique nearest patch) climbs
+    # toward 1.0 and the others toward 0 - the denoised output becomes an
+    # exact copy of that one patch instead of a blend. This is the failure
+    # mode the project must measure, not just avoid by accident: a
+    # generator run at too-small sigma is not synthesizing, it is copying.
