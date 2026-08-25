@@ -20,9 +20,19 @@ def extract_patches(image, patch_size, stride, exclusion_mask=None):
     h, w = image.shape
     assert patch_size <= h and patch_size <= w
 
+    # guarantee full coverage even when stride doesn't evenly divide
+    # (h - patch_size) / (w - patch_size) - always include the exact
+    # bottom/right-aligned position, not just stride-spaced ones
+    row_starts = list(range(0, h - patch_size + 1, stride))
+    if row_starts[-1] != h - patch_size:
+        row_starts.append(h - patch_size)
+    col_starts = list(range(0, w - patch_size + 1, stride))
+    if col_starts[-1] != w - patch_size:
+        col_starts.append(w - patch_size)
+
     patches, positions = [], []
-    for row in range(0, h - patch_size + 1, stride):
-        for col in range(0, w - patch_size + 1, stride):
+    for row in row_starts:
+        for col in col_starts:
             if exclusion_mask is not None:
                 window = exclusion_mask[row:row + patch_size, col:col + patch_size]
                 if window.any():
