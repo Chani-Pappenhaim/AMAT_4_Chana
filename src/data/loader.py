@@ -4,8 +4,12 @@ TEST-source rejection below is the only path into the generator.
 """
 import json
 import os
+import sys
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, os.path.dirname(__file__))
+from guard import assert_lineage_is_test_safe, TestLeakageError  # noqa: E402
 
 _SPLIT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "experiments", "source_split_v1.json")
 _EMPS_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "AMAT", "amat4-week1", "emps", "images")
@@ -23,7 +27,7 @@ DEV_SOURCE_IDS = ["00655d9628", "0144266d21", "01ac659240"]
 
 def load_generator_source(source_id):
     """Load one image by id for the generator. Refuses any TEST-split id."""
-    assert source_id not in TEST_IDS, f"Refused: '{source_id}' is a TEST source, not usable by the generator."
+    assert_lineage_is_test_safe([source_id])
     assert source_id in TRAIN_IDS or source_id in VALIDATION_IDS, f"Unknown source_id: '{source_id}'"
 
     path = os.path.join(_EMPS_IMAGES_DIR, source_id + ".png")
@@ -40,5 +44,5 @@ if __name__ == "__main__":
     try:
         load_generator_source(next(iter(TEST_IDS)))
         raise SystemExit("ERROR: TEST source was not rejected!")
-    except AssertionError as e:
+    except TestLeakageError as e:
         print(f"Correctly rejected a TEST source: {e}")

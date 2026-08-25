@@ -96,7 +96,7 @@ md("""## Conclusion
 
 nb["cells"] = cells
 
-out_path = "AMAT4_W2_data_to_generator_input.ipynb"
+out_path = "source_safe_split_and_loader.ipynb"
 with open(out_path, "w", encoding="utf-8") as f:
     nbf.write(nb, f)
 
