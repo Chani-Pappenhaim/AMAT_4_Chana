@@ -24,18 +24,19 @@ Each guarantee below is demonstrated, not just asserted: a deliberately
 contaminated input is fed to the check, and we confirm it actually fails.
 """)
 
-md("## 1. Source split and grouping")
+md("""## 1. Source split and grouping
 
-code("""import sys, os
+Built once in `source_safe_split_and_loader.ipynb` (see that notebook for how
+the split is constructed). Here we only load the existing manifest, since
+every later section depends on it - rebuilding it again here would duplicate
+that notebook's responsibility.""")
+
+code("""import sys, os, json
 sys.path.append(os.path.join("..", "..", "src"))
-from data.split import build_source_split
 
-manifest = build_source_split(
-    emps_dir=os.path.join("..", "..", "..", "AMAT", "amat4-week1", "emps"),
-    out_path=os.path.join("..", "..", "configs", "experiments", "source_split_v1.json"),
-    val_fraction=0.15,
-    seed=0,
-)
+manifest_path = os.path.join("..", "..", "configs", "experiments", "source_split_v1.json")
+with open(manifest_path, "r", encoding="utf-8") as f:
+    manifest = json.load(f)
 
 print(f"train:      {len(manifest['train_ids']):3d} images / {len(manifest['train_sources']):3d} DOI groups")
 print(f"validation: {len(manifest['validation_ids']):3d} images / {len(manifest['validation_sources']):3d} DOI groups")
