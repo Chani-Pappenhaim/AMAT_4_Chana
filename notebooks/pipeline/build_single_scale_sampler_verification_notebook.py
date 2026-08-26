@@ -239,6 +239,71 @@ plt.tight_layout()
 plt.show()
 """)
 
+md("""## Part 3: where does the time go?
+
+Not an optimization pass (that belongs to the efficiency layer) - just
+measuring, once, which part of one sampler step is the bottleneck, so any
+future speedup effort is aimed at the right place.""")
+
+code("""import time
+from models.denoiser import denoise_patch
+from data.patches import reconstruct_from_patches
+
+x0 = np.random.default_rng(0).normal(128.0, emps_sigma_max, size=emps_crop.shape)
+
+t0 = time.perf_counter()
+profile_record = extract_patches(x0, PATCH_SIZE, STRIDE)
+t_extract = time.perf_counter() - t0
+
+t0 = time.perf_counter()
+profile_denoised = np.stack([denoise_patch(p, emps_bank, emps_sigma_max)[0] for p in profile_record.patches])
+t_denoise = time.perf_counter() - t0
+
+t0 = time.perf_counter()
+profile_record.patches = profile_denoised
+_ = reconstruct_from_patches(profile_record, emps_crop.shape)
+t_reconstruct = time.perf_counter() - t0
+
+total = t_extract + t_denoise + t_reconstruct
+print(f"patches per image: {len(profile_record.patches)}, bank size: {len(emps_bank)}")
+print(f"extract_patches: {t_extract*1000:6.2f} ms ({100*t_extract/total:4.1f}%)")
+print(f"denoise_patch (all patches): {t_denoise*1000:6.2f} ms ({100*t_denoise/total:4.1f}%)")
+print(f"reconstruct_from_patches: {t_reconstruct*1000:6.2f} ms ({100*t_reconstruct/total:4.1f}%)")
+""")
+
+md("""**Finding:** denoising dominates - roughly 80% of one step's time,
+because it compares every patch in the image against every patch in the
+bank (a Python-level loop over the image's patches, each internally
+vectorized over the bank). Cost scales with `patches_in_image x bank_size`,
+which is exactly why the full 512x512 NIST image timed out earlier while
+this 64x64 crop runs in milliseconds - a 32x32 patch bank difference
+compounds quadratically. This is the concrete target for the efficiency
+layer, not something to optimize here.""")
+
+md("""## Failure gallery
+
+The three failure modes found in this layer, side by side, each with the
+evidence that established it - not a bug list, a map of where this
+specific method stops working.""")
+
+code("""fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+
+axes[0].imshow(history[0], cmap="gray")
+axes[0].set_title("1. Variance collapse\\n(full-jump update, fixed)")
+axes[0].axis("off")
+
+axes[1].imshow(final_image, cmap="gray")
+axes[1].set_title("2. No global organization\\n(NIST blobs -> local noise)")
+axes[1].axis("off")
+
+axes[2].imshow(np.clip(emps_results[0], 0, 255), cmap="gray")
+axes[2].set_title("3. Fix doesn't generalize\\n(EMPS: clipped from [-500,700])")
+axes[2].axis("off")
+
+plt.tight_layout()
+plt.show()
+""")
+
 md("""## Layer 4 conclusion (NIST + EMPS)
 
 Three findings, all measured and reproducible - not two successes and a
