@@ -25,6 +25,13 @@ def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
 
     sigma_max = np.percentile(distances, 50)  # "typical" separation: permissive but not everything-looks-alike
     sigma_min = np.percentile(distances, 5)   # near the closest-neighbor scale: selective
+
+    # a small or near-uniform bank (e.g. the coarsest pyramid level) can have
+    # many identical/near-identical patches, making the 5th percentile land
+    # on exact duplicates - distance 0. A geometric sigma schedule cannot
+    # include 0, and sigma=0 would divide by zero in denoise_patch, so floor
+    # sigma_min to a small fraction of sigma_max instead of letting it hit 0.
+    sigma_min = max(sigma_min, sigma_max * 0.01)
     return sigma_max, sigma_min
 
 
@@ -59,6 +66,32 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
         history.append(x.copy())
 
     return x, history
+
+
+def generate_coarse_sketch(pyramid, patch_size, stride, num_steps, seed, step_fraction=0.5):
+    """Run the single-scale sampler on only the coarsest pyramid level.
+
+    At that tiny resolution, a patch covers a large fraction of the whole
+    image, so "local" and "global" are nearly the same thing - which is
+    exactly why the single-scale method can lay out large-scale structure
+    here, even though it cannot at full resolution.
+    """
+    coarsest_level = pyramid[-1]
+    bank = extract_patches(coarsest_level, patch_size, stride).patches.astype(np.float64)
+    sigma_max, sigma_min = estimate_sigma_range(bank)
+
+    sketch, history = sample_single_scale(
+        shape=coarsest_level.shape,
+        patch_bank=bank,
+        patch_size=patch_size,
+        stride=stride,
+        num_steps=num_steps,
+        sigma_max=sigma_max,
+        sigma_min=sigma_min,
+        seed=seed,
+        step_fraction=step_fraction,
+    )
+    return sketch, history
 
 
 if __name__ == "__main__":
