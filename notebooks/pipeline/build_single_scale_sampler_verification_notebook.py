@@ -9,12 +9,15 @@ def md(text):
 def code(text):
     cells.append(nbf.v4.new_code_cell(text))
 
-md("""# Single-scale sampler: first verification on NIST
+md("""# Single-scale sampler: verification on NIST, then EMPS
 
-Before running the sampler on EMPS, verify it on the NIST fixture: one
-clean reference image with a controlled, simple geometry. If the sampler
-cannot produce plausible structure here, there is a bug in the pipeline,
-not a research finding.
+Part 1 verifies `sample_single_scale` on the NIST fixture: one clean
+reference image with a controlled, simple geometry. If the sampler cannot
+produce plausible structure here, there is a bug in the pipeline, not a
+research finding.
+
+Part 2 runs the same, unmodified sampler on real EMPS texture across
+multiple seeds, now that it is verified to run correctly.
 """)
 
 md("## 1. Load the NIST clean reference")
@@ -170,9 +173,95 @@ limitation is expected to be addressed by the multiscale sampler, not by
 this single-scale one.
 """)
 
+md("""## Part 2: EMPS - multiple seeds on real texture
+
+Same `sample_single_scale`, unmodified. This checks whether the two NIST
+findings (variance collapse fixed by a partial step; global organization
+still missing) hold on real, more complex texture too, and whether
+different seeds produce genuinely different - but comparably textured -
+outputs.""")
+
+code("""from data.loader import DEV_SOURCE_IDS, load_generator_source
+
+emps_img, emps_id = load_generator_source(DEV_SOURCE_IDS[0])
+EMPS_CROP = 64
+emps_crop = emps_img[:EMPS_CROP, :EMPS_CROP].astype(np.float64)
+
+emps_bank = extract_patches(emps_crop, PATCH_SIZE, STRIDE).patches.astype(np.float64)
+emps_sigma_max, emps_sigma_min = estimate_sigma_range(emps_bank)
+print(f"EMPS source: {emps_id}, crop std={emps_crop.std():.1f}, sigma_max={emps_sigma_max:.2f}, sigma_min={emps_sigma_min:.2f}")
+""")
+
+code("""NUM_SEEDS = 5
+emps_results = []
+for seed in range(NUM_SEEDS):
+    final, _ = sample_single_scale(
+        shape=emps_crop.shape, patch_bank=emps_bank, patch_size=PATCH_SIZE, stride=STRIDE,
+        num_steps=30, sigma_max=emps_sigma_max, sigma_min=emps_sigma_min, seed=seed, step_fraction=0.02,
+    )
+    emps_results.append(final)
+    print(f"seed={seed}: std={final.std():.2f}, min={final.min():.1f}, max={final.max():.1f}")
+""")
+
+md("""**Finding 3 - the partial-step fix does not generalize (numerical
+divergence on EMPS).** std lands at 156-160 across all 5 seeds - not
+"healthy extra variance", but pixel values running to min~-500 / max~700,
+far outside the valid 0-255 range. This is instability, not signal.
+
+Root cause: `step_fraction=0.02` was hand-tuned to work on NIST. On EMPS,
+the auto-calibrated `sigma_max` (~64) is already *larger* than the real
+crop's own std (~45), unlike NIST where sigma_max (~24) was well below the
+source std (~56). Combined with the same fixed step_fraction, the update no
+longer damps toward a stable image - it drifts.
+
+This means the Round-1 fix itself was, in effect, a second hand-tuned
+constant fitted to one image - exactly the mistake `estimate_sigma_range`
+was written to avoid for sigma. A properly derived reverse-process update
+(scaling correctly with the schedule, not a fixed fraction) is what Layer 5
+needs to get right; patching step_fraction per-image here would repeat the
+same error a third time.""")
+
+md("""### Compare seeds against the real EMPS crop
+
+Different seeds should produce visibly different layouts while all landing
+in a similar std range - evidence the randomness comes from the noise seed,
+not from a bug that always converges to one fixed output.""")
+
+code("""fig, axes = plt.subplots(1, NUM_SEEDS + 1, figsize=(3 * (NUM_SEEDS + 1), 3))
+axes[0].imshow(emps_crop, cmap="gray")
+axes[0].set_title("real EMPS crop")
+axes[0].axis("off")
+for ax, seed, result in zip(axes[1:], range(NUM_SEEDS), emps_results):
+    ax.imshow(result, cmap="gray")
+    ax.set_title(f"seed={seed}")
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+""")
+
+md("""## Layer 4 conclusion (NIST + EMPS)
+
+Three findings, all measured and reproducible - not two successes and a
+quiet failure:
+
+1. **Variance collapse** (full-jump update) - confirmed on NIST, fixed by a
+   partial Langevin-style step.
+2. **Loss of global organization** - confirmed on NIST; a single 8x8 patch
+   has no way to know it is part of a large coherent shape.
+3. **The Round-1 fix does not generalize** - confirmed on EMPS: the same
+   `step_fraction` that stabilized NIST causes numerical divergence
+   (pixel values from -500 to 700) on EMPS, because it was implicitly
+   tuned to NIST's own sigma-to-std ratio.
+
+`sample_single_scale` is deterministic, reusable, and self-calibrates its
+sigma range - but it is not yet a working single-scale generator on
+arbitrary source images, and that is the honest, evidenced state to carry
+into the multiscale sampler rather than a checkbox marked done.
+""")
+
 nb["cells"] = cells
 
-out_path = "single_scale_sampler_nist.ipynb"
+out_path = "single_scale_sampler_verification.ipynb"
 with open(out_path, "w", encoding="utf-8") as f:
     nbf.write(nb, f)
 
