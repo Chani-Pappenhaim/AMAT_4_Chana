@@ -142,13 +142,22 @@ plt.tight_layout()
 plt.show()
 """)
 
-md("""**Round 1 - variance collapse (fixed).** The original update jumped
-fully onto the denoised mean each step (`x = denoised`). Averaging is a
-variance-reducing operation by construction, so std collapsed from the
-source's ~55 to under 1 within 3 steps regardless of sigma calibration.
-Fix: a Langevin-style *partial* step toward the mean (`step_fraction=0.02`)
-plus noise scaled to the *current* sigma (not the next, shrinking one).
-This alone recovered std to ~42-45, close to the source's ~55.
+md("""**Round 1 - variance collapse (fixed, and later improved further).**
+The original update jumped fully onto the denoised mean each step
+(`x = denoised`). Averaging is a variance-reducing operation by
+construction, so std collapsed from the source's ~55 to under 1 within 3
+steps regardless of sigma calibration. First fix: a Langevin-style
+*partial* step toward the mean (`step_fraction=0.02`) plus noise scaled to
+the *current* sigma (not the next, shrinking one) - this alone recovered
+std to ~42-45.
+
+A second, unrelated fix found later (while measuring label-validity displacement
+in the multiscale sampler) improved this further: border pixels are covered
+by far fewer overlapping patches than interior ones, so they get less
+averaging and drift more; reflect-padding before each step's patch
+extraction and cropping after reconstruction now keeps std in the ~45-55
+range for most of the run - close to the source's own ~55.6, not just
+"recovered from near-zero."
 
 **Round 2 - global organization is still missing (not fixed, and not
 fixable here).** The NIST reference is a small number of large white blobs

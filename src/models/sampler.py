@@ -61,13 +61,24 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
     x = init.copy() if init is not None else rng.normal(loc=128.0, scale=sigma_max, size=shape)
     history = [x.copy()]
 
+    # Border pixels are covered by far fewer overlapping patches than
+    # interior pixels (a corner gets 1 patch, an edge gets 2, the interior
+    # gets 4 with patch_size=4/stride=2) - fewer patches averaged together
+    # means less smoothing, so extreme (denoised) values cluster at the
+    # border. Padding by reflection before each step gives every real
+    # pixel the same interior-level coverage; cropping after reconstruction
+    # removes the padding again, so the returned shape is unchanged.
+    pad = patch_size
+
     for step, sigma in enumerate(sigmas):
-        record = extract_patches(x, patch_size, stride)
+        x_padded = np.pad(x, pad, mode="reflect")
+        record = extract_patches(x_padded, patch_size, stride)
         denoised_patches = np.stack([
             denoise_patch(patch, patch_bank, sigma)[0] for patch in record.patches
         ])
         record.patches = denoised_patches
-        denoised = reconstruct_from_patches(record, shape)
+        denoised_padded = reconstruct_from_patches(record, x_padded.shape)
+        denoised = denoised_padded[pad:pad + shape[0], pad:pad + shape[1]]
 
         # partial Langevin-style step toward the mean, plus noise scaled
         # to the CURRENT sigma (not the shrinking next_sigma) - this is
