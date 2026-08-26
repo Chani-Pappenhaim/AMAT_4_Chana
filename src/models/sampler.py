@@ -6,6 +6,7 @@ import os
 import sys
 
 import numpy as np
+from scipy.ndimage import zoom
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from data.patches import extract_patches, reconstruct_from_patches  # noqa: E402
@@ -35,16 +36,20 @@ def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
     return sigma_max, sigma_min
 
 
-def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed, step_fraction=0.5):
+def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed, step_fraction=0.5, init=None):
     """step_fraction controls how far each step moves toward the denoised
     mean (Langevin-style partial step) instead of jumping fully onto it -
     a full jump (step_fraction=1) collapses variance almost immediately,
     since averaging is inherently variance-reducing.
+
+    init: start from this image instead of pure noise - used for
+    refinement, where the starting point already has coarse structure
+    from a previous scale and only needs detail added, not a fresh start.
     """
     rng = np.random.default_rng(seed)
     sigmas = np.geomspace(sigma_max, sigma_min, num_steps)
 
-    x = rng.normal(loc=128.0, scale=sigma_max, size=shape)
+    x = init.copy() if init is not None else rng.normal(loc=128.0, scale=sigma_max, size=shape)
     history = [x.copy()]
 
     for step, sigma in enumerate(sigmas):
@@ -92,6 +97,58 @@ def generate_coarse_sketch(pyramid, patch_size, stride, num_steps, seed, step_fr
         step_fraction=step_fraction,
     )
     return sketch, history
+
+
+def refine_at_scale(current, target_level, patch_size, stride, num_steps, seed, step_fraction=0.5, noise_scale=0.3):
+    """Upsample `current` (a coarser-scale result) to `target_level`'s
+    resolution, then add detail by denoising against a bank built from the
+    REAL image at that resolution - not by generating from scratch.
+    """
+    zoom_factors = (target_level.shape[0] / current.shape[0], target_level.shape[1] / current.shape[1])
+    upsampled = zoom(current, zoom_factors, order=1)
+
+    bank = extract_patches(target_level, patch_size, stride).patches.astype(np.float64)
+    sigma_max, sigma_min = estimate_sigma_range(bank)
+
+    rng = np.random.default_rng(seed)
+    # only a little fresh noise - most of the structure should already be
+    # right from the upsampled coarser result; this just gives the
+    # refinement room to add detail rather than only smoothing the upsample
+    noisy_init = upsampled + rng.normal(0, sigma_max * noise_scale, size=target_level.shape)
+
+    refined, history = sample_single_scale(
+        shape=target_level.shape,
+        patch_bank=bank,
+        patch_size=patch_size,
+        stride=stride,
+        num_steps=num_steps,
+        sigma_max=sigma_max * noise_scale,
+        sigma_min=sigma_min,
+        seed=seed,
+        step_fraction=step_fraction,
+        init=noisy_init,
+    )
+    return refined, history
+
+
+def sample_coarse_to_fine(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction=0.5):
+    """Full coarse-to-fine generation: lay out global structure at the
+    coarsest scale, then add detail one pyramid level at a time, using each
+    level's own real patches - see generate_coarse_sketch and
+    refine_at_scale for what happens at each stage.
+    """
+    sketch, _ = generate_coarse_sketch(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction)
+    stages = [sketch]
+
+    current = sketch
+    for level_index in range(len(pyramid) - 2, -1, -1):
+        # pyramid[-1] is coarsest (already used); walk back toward
+        # pyramid[0], the full resolution, one level at a time
+        target_level = pyramid[level_index]
+        current, _ = refine_at_scale(current, target_level, patch_size, stride, num_steps_per_scale, seed, step_fraction)
+        stages.append(current)
+
+    return current, stages
 
 
 if __name__ == "__main__":
