@@ -28,7 +28,12 @@ def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
     return sigma_max, sigma_min
 
 
-def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed):
+def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed, step_fraction=0.5):
+    """step_fraction controls how far each step moves toward the denoised
+    mean (Langevin-style partial step) instead of jumping fully onto it -
+    a full jump (step_fraction=1) collapses variance almost immediately,
+    since averaging is inherently variance-reducing.
+    """
     rng = np.random.default_rng(seed)
     sigmas = np.geomspace(sigma_max, sigma_min, num_steps)
 
@@ -41,12 +46,15 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
             denoise_patch(patch, patch_bank, sigma)[0] for patch in record.patches
         ])
         record.patches = denoised_patches
-        x = reconstruct_from_patches(record, shape)
+        denoised = reconstruct_from_patches(record, shape)
 
+        # partial Langevin-style step toward the mean, plus noise scaled
+        # to the CURRENT sigma (not the shrinking next_sigma) - this is
+        # what keeps the process from collapsing to the mean image
+        x = x + step_fraction * (denoised - x)
         is_last_step = step == len(sigmas) - 1
         if not is_last_step:
-            next_sigma = sigmas[step + 1]
-            x = x + rng.normal(0, next_sigma, size=shape)
+            x = x + rng.normal(0, sigma, size=shape)
 
         history.append(x.copy())
 

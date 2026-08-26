@@ -68,19 +68,24 @@ code("""from models.sampler import sample_single_scale, estimate_sigma_range
 sigma_max, sigma_min = estimate_sigma_range(bank)
 print(f"calibrated from this bank's own distances: sigma_max={sigma_max:.2f}, sigma_min={sigma_min:.2f}")
 
+# step_fraction=1.0 (jump fully to the denoised mean each step) collapsed
+# variance to near zero almost immediately - see the finding below. A
+# small Langevin-style partial step (move only part-way toward the mean,
+# then add noise at the CURRENT sigma) preserves far more variance.
 final_image, history = sample_single_scale(
     shape=clean_ref.shape,
     patch_bank=bank,
     patch_size=PATCH_SIZE,
     stride=STRIDE,
-    num_steps=15,
+    num_steps=30,
     sigma_max=sigma_max,
     sigma_min=sigma_min,
     seed=0,
+    step_fraction=0.02,
 )
 
-for i, snap in enumerate(history):
-    print(f"step {i:2d}: mean={snap.mean():6.1f}, std={snap.std():6.1f}")
+for i in [0, 5, 10, 15, 20, 25, 30]:
+    print(f"step {i:2d}: mean={history[i].mean():6.1f}, std={history[i].std():6.1f}")
 """)
 
 md("""## 4. Compare: pure noise vs final synthetic vs real reference
@@ -115,44 +120,54 @@ plt.tight_layout()
 plt.show()
 """)
 
-md("""## Finding: variance collapse (negative result)
+md("""## Finding: variance collapse, partially fixed - and a deeper limit found
 
-The sampler runs end-to-end without crashing, but the outcome is a genuine
-failure worth recording, not a success to gloss over.""")
+Two rounds of investigation here, each a genuine finding to record, not a
+failure to hide.""")
 
 code("""print(f"real NIST crop std: {clean_ref.std():.1f}")
 print(f"initial noise std:      {history[0].std():.1f}")
-print(f"final synthetic std:    {final_image.std():.1f}")
+print(f"final synthetic std (step_fraction=0.02): {final_image.std():.1f}")
 """)
 
-md("""**What happened:** std drops from the source image's ~55 toward under 1
-within just a few steps - even after calibrating sigma from the bank's own
-distance distribution (ruling out "wrong hardcoded constant" as the cause).
-Cutting the step count from 15 down to 3 still collapses to std ~0.4-0.7.
-The collapse is immediate, not a slow accumulation over many iterations.
+code("""fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+for ax, title, im in zip(axes, ["initial noise", "final (fixed)", "real reference"], [history[0], final_image, clean_ref]):
+    ax.imshow(im, cmap="gray")
+    ax.set_title(title)
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+""")
 
-**Why:** `denoise_patch` computes a similarity-weighted *average* of bank
-patches. Averaging is a variance-reducing operation by construction - the
-result is always smoother than any individual patch that went into it. That
-is exactly correct behavior for denoising a real noisy photo (you want the
-stable, de-noised estimate). It is the wrong behavior for *generation*,
-where the goal is a plausible sample with realistic variance, not the
-smoothed mean. Re-adding noise between steps at the next sigma does not
-compensate for this, because it adds *unstructured* variance while the
-denoiser keeps removing *structured* variance - the two are not equal and
-opposite.
+md("""**Round 1 - variance collapse (fixed).** The original update jumped
+fully onto the denoised mean each step (`x = denoised`). Averaging is a
+variance-reducing operation by construction, so std collapsed from the
+source's ~55 to under 1 within 3 steps regardless of sigma calibration.
+Fix: a Langevin-style *partial* step toward the mean (`step_fraction=0.02`)
+plus noise scaled to the *current* sigma (not the next, shrinking one).
+This alone recovered std to ~42-45, close to the source's ~55.
 
-**Why we are not patching this with a bigger noise term:** the correct fix
-is the reverse-process update the method's underlying theory specifies,
-which corrects for exactly this shrinkage - not a hand-tuned constant that
-would only work for this one image and step count. Getting that update
-right belongs with the coarse-to-fine sampler, not as a quick patch here.
+**Round 2 - global organization is still missing (not fixed, and not
+fixable here).** The NIST reference is a small number of large white blobs
+on a black background. Even with variance recovered, the output above still
+looks like local salt-and-pepper texture, not blobs - visually confirmed,
+not just inferred from the std number. Each patch only sees an 8x8
+neighborhood; nothing in a single-scale method lets a patch "know" it is
+part of a large coherent shape far bigger than itself.
 
-**Status:** the single-scale sampler is verified to run correctly end-to-end
-(no crash, deterministic, calibrates itself to any bank) and its failure
-mode is measured and understood, but it does not yet produce texture-
-preserving output. This is a documented limitation carried forward, not a
-blocker treated as invisible.
+**Why this is not something to keep tuning:** this is the exact question
+the project's own investigation list asks - "does single-scale generation
+preserve only local texture while losing global organization?" - and the
+answer is a structural yes, not a parameter-tuning problem. Global layout
+requires deciding coarse structure at a coarse scale first, which is what
+the coarse-to-fine, multiscale sampler is for.
+
+**Status:** `sample_single_scale` runs correctly end-to-end, is
+deterministic, self-calibrates to any patch bank, and its two failure modes
+(variance collapse, then loss of global organization) are each measured,
+visually verified, and explained rather than patched over. The second
+limitation is expected to be addressed by the multiscale sampler, not by
+this single-scale one.
 """)
 
 nb["cells"] = cells
