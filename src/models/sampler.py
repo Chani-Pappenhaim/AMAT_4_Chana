@@ -55,6 +55,10 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
     refinement, where the starting point already has coarse structure
     from a previous scale and only needs detail added, not a fresh start.
     """
+    assert stride <= patch_size, (
+        f"stride ({stride}) must be <= patch_size ({patch_size}) - a larger "
+        "stride leaves real gaps between patches that no pixel covers"
+    )
     rng = np.random.default_rng(seed)
     sigmas = np.geomspace(sigma_max, sigma_min, num_steps)
 
