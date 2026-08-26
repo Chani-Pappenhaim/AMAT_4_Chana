@@ -27,6 +27,15 @@ def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
     sigma_max = np.percentile(distances, 50)  # "typical" separation: permissive but not everything-looks-alike
     sigma_min = np.percentile(distances, 5)   # near the closest-neighbor scale: selective
 
+    # A bank that is mostly one flat value (e.g. a synthetic mostly-black
+    # control image, or a near-uniform coarsest pyramid level) can have so
+    # many identical patches that even the MEDIAN distance is 0 - not just
+    # the 5th percentile. Fall back to the bank's own pixel value range,
+    # which is never 0 unless the whole bank is a single constant.
+    if sigma_max <= 1e-6:
+        value_range = patch_bank.max() - patch_bank.min()
+        sigma_max = value_range if value_range > 1e-6 else 1.0
+
     # a small or near-uniform bank (e.g. the coarsest pyramid level) can have
     # many identical/near-identical patches, making the 5th percentile land
     # on exact duplicates - distance 0. A geometric sigma schedule cannot
