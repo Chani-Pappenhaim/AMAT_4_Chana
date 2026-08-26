@@ -10,7 +10,7 @@ from scipy.ndimage import zoom
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from data.patches import extract_patches, reconstruct_from_patches  # noqa: E402
-from models.denoiser import denoise_patch  # noqa: E402
+from models.denoiser import denoise_patch, denoise_patch_approx  # noqa: E402
 
 
 def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
@@ -45,7 +45,7 @@ def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
     return sigma_max, sigma_min
 
 
-def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed, step_fraction=0.5, init=None):
+def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed, step_fraction=0.5, init=None, mean_tolerance=None):
     """step_fraction controls how far each step moves toward the denoised
     mean (Langevin-style partial step) instead of jumping fully onto it -
     a full jump (step_fraction=1) collapses variance almost immediately,
@@ -54,6 +54,11 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
     init: start from this image instead of pure noise - used for
     refinement, where the starting point already has coarse structure
     from a previous scale and only needs detail added, not a fresh start.
+
+    mean_tolerance: None runs the exact denoiser (denoise_patch) as before.
+    A number switches every patch call to the approximate, mean-prefiltered
+    denoiser (denoise_patch_approx) with that tolerance - lets a caller
+    build a "fast" configuration without duplicating this whole function.
     """
     assert stride <= patch_size, (
         f"stride ({stride}) must be <= patch_size ({patch_size}) - a larger "
@@ -77,9 +82,14 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
     for step, sigma in enumerate(sigmas):
         x_padded = np.pad(x, pad, mode="reflect")
         record = extract_patches(x_padded, patch_size, stride)
-        denoised_patches = np.stack([
-            denoise_patch(patch, patch_bank, sigma)[0] for patch in record.patches
-        ])
+        if mean_tolerance is None:
+            denoised_patches = np.stack([
+                denoise_patch(patch, patch_bank, sigma)[0] for patch in record.patches
+            ])
+        else:
+            denoised_patches = np.stack([
+                denoise_patch_approx(patch, patch_bank, sigma, mean_tolerance)[0] for patch in record.patches
+            ])
         record.patches = denoised_patches
         denoised_padded = reconstruct_from_patches(record, x_padded.shape)
         denoised = denoised_padded[pad:pad + shape[0], pad:pad + shape[1]]
@@ -97,7 +107,7 @@ def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_
     return x, history
 
 
-def generate_coarse_sketch(pyramid, patch_size, stride, num_steps, seed, step_fraction=0.5):
+def generate_coarse_sketch(pyramid, patch_size, stride, num_steps, seed, step_fraction=0.5, mean_tolerance=None):
     """Run the single-scale sampler on only the coarsest pyramid level.
 
     At that tiny resolution, a patch covers a large fraction of the whole
@@ -119,11 +129,12 @@ def generate_coarse_sketch(pyramid, patch_size, stride, num_steps, seed, step_fr
         sigma_min=sigma_min,
         seed=seed,
         step_fraction=step_fraction,
+        mean_tolerance=mean_tolerance,
     )
     return sketch, history
 
 
-def refine_at_scale(current, target_level, patch_size, stride, num_steps, seed, step_fraction=0.5, noise_scale=0.3):
+def refine_at_scale(current, target_level, patch_size, stride, num_steps, seed, step_fraction=0.5, noise_scale=0.3, mean_tolerance=None):
     """Upsample `current` (a coarser-scale result) to `target_level`'s
     resolution, then add detail by denoising against a bank built from the
     REAL image at that resolution - not by generating from scratch.
@@ -151,17 +162,22 @@ def refine_at_scale(current, target_level, patch_size, stride, num_steps, seed, 
         seed=seed,
         step_fraction=step_fraction,
         init=noisy_init,
+        mean_tolerance=mean_tolerance,
     )
     return refined, history
 
 
-def sample_coarse_to_fine(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction=0.5):
+def sample_coarse_to_fine(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction=0.5, mean_tolerance=None):
     """Full coarse-to-fine generation: lay out global structure at the
     coarsest scale, then add detail one pyramid level at a time, using each
     level's own real patches - see generate_coarse_sketch and
     refine_at_scale for what happens at each stage.
+
+    mean_tolerance: forwarded to every sample_single_scale call - None for
+    the exact reference configuration, a number to build a "fast"
+    configuration using the approximate denoiser at every stage.
     """
-    sketch, _ = generate_coarse_sketch(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction)
+    sketch, _ = generate_coarse_sketch(pyramid, patch_size, stride, num_steps_per_scale, seed, step_fraction, mean_tolerance=mean_tolerance)
     stages = [sketch]
 
     current = sketch
@@ -169,7 +185,7 @@ def sample_coarse_to_fine(pyramid, patch_size, stride, num_steps_per_scale, seed
         # pyramid[-1] is coarsest (already used); walk back toward
         # pyramid[0], the full resolution, one level at a time
         target_level = pyramid[level_index]
-        current, _ = refine_at_scale(current, target_level, patch_size, stride, num_steps_per_scale, seed, step_fraction)
+        current, _ = refine_at_scale(current, target_level, patch_size, stride, num_steps_per_scale, seed, step_fraction, mean_tolerance=mean_tolerance)
         stages.append(current)
 
     return current, stages
