@@ -12,6 +12,22 @@ from data.patches import extract_patches, reconstruct_from_patches  # noqa: E402
 from models.denoiser import denoise_patch  # noqa: E402
 
 
+def estimate_sigma_range(patch_bank, num_samples=2000, seed=0):
+    """Derive a sensible (sigma_max, sigma_min) from the bank's own
+    patch-to-patch distance distribution, instead of a hardcoded constant
+    that only happens to fit one particular image.
+    """
+    rng = np.random.default_rng(seed)
+    flat = patch_bank.reshape(len(patch_bank), -1)
+    idx_a = rng.integers(0, len(flat), num_samples)
+    idx_b = rng.integers(0, len(flat), num_samples)
+    distances = np.sqrt(np.sum((flat[idx_a] - flat[idx_b]) ** 2, axis=1))
+
+    sigma_max = np.percentile(distances, 50)  # "typical" separation: permissive but not everything-looks-alike
+    sigma_min = np.percentile(distances, 5)   # near the closest-neighbor scale: selective
+    return sigma_max, sigma_min
+
+
 def sample_single_scale(shape, patch_bank, patch_size, stride, num_steps, sigma_max, sigma_min, seed):
     rng = np.random.default_rng(seed)
     sigmas = np.geomspace(sigma_max, sigma_min, num_steps)
