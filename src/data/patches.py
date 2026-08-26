@@ -1,6 +1,6 @@
 """Patch extraction and reconstruction for one pyramid level. A patch is
-dropped if it intersects any excluded (figure-furniture) pixel - Layer 2
-must apply the Layer-1 exclusion mask before building the bank.
+dropped if it intersects any excluded (figure-furniture) pixel, so the
+patch bank never contains a scale bar, caption, or panel letter.
 """
 from dataclasses import dataclass
 
