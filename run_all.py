@@ -113,7 +113,14 @@ def run_pipeline_notebooks():
         t0 = time.perf_counter()
         try:
             nb = nbformat.read(notebook_path, as_version=4)
-            NotebookClient(nb, timeout=600, kernel_name="python3").execute()
+            # resources.metadata.path sets the kernel's working directory to
+            # match where Jupyter would run it from - without this, each
+            # notebook's own `sys.path.append("../../src")` resolves against
+            # this script's cwd instead and every import of src/ fails.
+            NotebookClient(
+                nb, timeout=600, kernel_name="python3",
+                resources={"metadata": {"path": str(notebook_path.parent)}},
+            ).execute()
             nbformat.write(nb, notebook_path)
             elapsed = time.perf_counter() - t0
             print(f"  [PASS] {notebook_name} ({layer}, {elapsed:.1f}s)")

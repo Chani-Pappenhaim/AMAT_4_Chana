@@ -6,7 +6,7 @@
     "mean_tolerance": null,
     "num_steps": 15,
     "seed": 0,
-    "time_s": 1.347,
+    "time_s": 1.444,
     "final_std": 1.23
   },
   {
@@ -16,7 +16,7 @@
     "mean_tolerance": 20,
     "num_steps": 15,
     "seed": 0,
-    "time_s": 2.258,
+    "time_s": 2.366,
     "final_std": 1.24
   },
   {
@@ -26,7 +26,7 @@
     "mean_tolerance": null,
     "num_steps": 15,
     "seed": 0,
-    "time_s": 0.203,
+    "time_s": 0.233,
     "final_std": 61.22
   },
   {
@@ -36,7 +36,7 @@
     "mean_tolerance": 20,
     "num_steps": 15,
     "seed": 0,
-    "time_s": 0.326,
+    "time_s": 0.337,
     "final_std": 65.15
   }
 ]
