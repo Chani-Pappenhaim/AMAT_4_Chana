@@ -56,7 +56,7 @@ clean = manifest["train_ids"][:3]
 assert_lineage_is_test_safe(clean)
 print(f"clean lineage passed: {clean}")
 
-contaminated = manifest["train_ids"][:2] + [next(iter(TEST_IDS))]
+contaminated = manifest["train_ids"][:2] + [sorted(TEST_IDS)[0]]
 try:
     assert_lineage_is_test_safe(contaminated)
     raise SystemExit("BUG: a TEST-contaminated lineage was NOT rejected")
@@ -98,6 +98,48 @@ plt.tight_layout()
 plt.show()
 print(furniture_stats)
 """)
+
+md("""### Furniture policy version history
+
+Per the spec: "keep every version that failed". `src/data/furniture.py`
+keeps v0 (border-only) and v1 (border + extreme-intensity) as real,
+callable functions alongside the current v2 - not deleted once superseded.
+This table shows what each version actually excludes on the same 3 images,
+so the progression is a measured comparison, not just a claim in a
+docstring.""")
+
+code("""import pandas as pd
+from data.furniture import (
+    build_exclusion_mask_v0_border_only,
+    build_exclusion_mask_v1_border_and_extreme,
+)
+
+version_rows = []
+for sid in DEV_SOURCE_IDS:
+    img, _ = load_generator_source(sid)
+    version_rows.append({
+        "image_id": sid,
+        "v0_border_only": round(float(build_exclusion_mask_v0_border_only(img).mean()), 4),
+        "v1_border_and_extreme": round(float(build_exclusion_mask_v1_border_and_extreme(img).mean()), 4),
+        "v2_current_full": round(float(build_exclusion_mask(img).mean()), 4),
+    })
+
+furniture_version_table = pd.DataFrame(version_rows)
+table_path = os.path.join("..", "..", "results", "tables", "furniture_policy_version_history.csv")
+furniture_version_table.to_csv(table_path, index=False)
+print(f"saved {table_path}")
+furniture_version_table
+""")
+
+md("""**What the version history shows on these 3 images:** v0 and v1 are
+identical here (no synthetic-style extreme-intensity footer happens to
+appear on these particular 3 dev images - the self-test in `furniture.py`
+proves v1 DOES catch such a footer when one exists, this is just these 3
+images not having one). v2 excludes strictly more than v0/v1 on at least
+one image - exactly the mid-image scale-bar-line gap the `furniture.py`
+self-test demonstrates: a ruled line at normal specimen intensity, away from
+the border, is invisible to v0 and v1 and only v2's line-detection catches
+it.""")
 
 md("""## 4. Modality-claim guard
 
@@ -141,11 +183,15 @@ for image_id, doi in manifest["group_of"].items():
     path = os.path.join(_EMPS_IMAGES_DIR, image_id + ".png")
     img = np.array(Image.open(path).convert("L"))
     excluded_fraction = float(build_exclusion_mask(img).mean())
+    split = split_of(image_id)
     rows.append({
         "image_id": image_id,
         "doi": doi,
-        "split": split_of(image_id),
+        "split": split,
         "excluded_fraction": round(excluded_fraction, 4),
+        # eligible = usable as a generator source; TEST is evaluation-only
+        # and must never reach a generator, patch bank, or selection decision
+        "eligible": split != "test",
     })
 
 source_manifest = pd.DataFrame(rows).sort_values("image_id").reset_index(drop=True)

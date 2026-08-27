@@ -1,0 +1,5 @@
+level,shape,patches_before_exclusion,patches_after_exclusion,dropped_by_furniture_mask
+0,515x512,16256,13210,3046
+1,258x256,4032,2706,1326
+2,129x128,992,556,436
+3,64x64,225,105,120

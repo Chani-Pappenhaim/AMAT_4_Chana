@@ -32,11 +32,17 @@ md("""## 2. Build the multiscale pyramid
 Defined by scale factors, not fixed pixel sizes, so it works on any of
 EMPS's 218 distinct canvas geometries.""")
 
-code("""import matplotlib.pyplot as plt
+code("""import json
+import matplotlib.pyplot as plt
 from data.pyramid import build_pyramid
 
-NUM_SCALES = 4
-levels = build_pyramid(img, num_scales=NUM_SCALES, scale_factor=0.5)
+with open(os.path.join("..", "..", "configs", "models", "pyramid_patch_config_v1.json"), encoding="utf-8") as f:
+    frozen_config = json.load(f)
+print(f"using frozen config {frozen_config['version']}: {frozen_config}")
+
+NUM_SCALES = frozen_config["pyramid"]["num_scales"]
+SCALE_FACTOR = frozen_config["pyramid"]["scale_factor"]
+levels = build_pyramid(img, num_scales=NUM_SCALES, scale_factor=SCALE_FACTOR)
 
 fig, axes = plt.subplots(1, NUM_SCALES, figsize=(4 * NUM_SCALES, 4))
 for ax, level_img in zip(axes, levels):
@@ -45,7 +51,11 @@ for ax, level_img in zip(axes, levels):
     ax.axis("off")
 plt.suptitle(f"Pyramid of {source_id}")
 plt.tight_layout()
+
+fig_path = os.path.join("..", "..", "results", "figures", "pyramid_levels.png")
+plt.savefig(fig_path, dpi=100, bbox_inches="tight")
 plt.show()
+print(f"saved {fig_path}")
 """)
 
 md("""## 3. Extract patches at every scale, with exclusion applied
@@ -58,8 +68,8 @@ code("""import pandas as pd
 from data.furniture import build_exclusion_mask
 from data.patches import extract_patches, reconstruct_from_patches, assert_no_excluded_patch
 
-PATCH_SIZE = 8
-STRIDE = 4
+PATCH_SIZE = frozen_config["patches"]["patch_size"]
+STRIDE = frozen_config["patches"]["stride"]
 
 rows = []
 records_by_level = []
@@ -80,7 +90,43 @@ for level, level_img in enumerate(levels):
     })
 
 patch_count_table = pd.DataFrame(rows)
+table_path = os.path.join("..", "..", "results", "tables", "patch_count_per_scale.csv")
+patch_count_table.to_csv(table_path, index=False)
+print(f"saved {table_path}")
 patch_count_table
+""")
+
+md("""## 3b. Patch-tile visualizations at fine, medium and coarse scale
+
+Section 2 only shows whole pyramid LEVELS (downsampled full images), not
+individual patches - the spec's deliverable explicitly asks for fine vs
+medium vs coarse PATCH visualizations, which is a different thing: a patch
+at level 0 covers a tiny sliver of real texture, the same patch size at the
+coarsest level covers a much larger fraction of the whole (shrunk) image.""")
+
+code("""import numpy as np
+
+FINE, MEDIUM, COARSE = 0, NUM_SCALES // 2, NUM_SCALES - 1
+N_TILES = 8
+
+fig, axes = plt.subplots(3, N_TILES, figsize=(1.6 * N_TILES, 5.2))
+for row, level in enumerate([FINE, MEDIUM, COARSE]):
+    record = records_by_level[level]
+    tile_idx = np.linspace(0, len(record.patches) - 1, N_TILES).astype(int)
+    for col, idx in enumerate(tile_idx):
+        axes[row, col].imshow(record.patches[idx], cmap="gray", vmin=0, vmax=255)
+        axes[row, col].axis("off")
+    axes[row, 0].set_ylabel(f"level {level}\\n({levels[level].shape[0]}x{levels[level].shape[1]})",
+                             rotation=0, labelpad=45, fontsize=9)
+    axes[row, 0].axis("on")
+    axes[row, 0].set_xticks([]); axes[row, 0].set_yticks([])
+plt.suptitle(f"{N_TILES} sample {PATCH_SIZE}x{PATCH_SIZE} patches at fine/medium/coarse scale")
+plt.tight_layout()
+
+fig_path = os.path.join("..", "..", "results", "figures", "patch_tiles_fine_medium_coarse.png")
+plt.savefig(fig_path, dpi=100, bbox_inches="tight")
+plt.show()
+print(f"saved {fig_path}")
 """)
 
 md("""## 4. Reconstruction check on the real image

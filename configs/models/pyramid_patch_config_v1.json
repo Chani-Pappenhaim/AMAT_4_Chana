@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "frozen_at": "Layer 2 gap-closing pass (Day 20)",
+  "pyramid": {
+    "num_scales": 4,
+    "scale_factor": 0.5
+  },
+  "patches": {
+    "patch_size": 8,
+    "stride": 4
+  },
+  "furniture_v2_current": {
+    "border_fraction": 0.03,
+    "min_component_size": 20,
+    "flatness_threshold": 2.0
+  }
+}

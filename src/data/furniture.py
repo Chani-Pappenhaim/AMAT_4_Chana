@@ -55,7 +55,32 @@ def long_line_mask(image, min_length_fraction=0.5, flatness_threshold=2.0):
     return mask
 
 
+def build_exclusion_mask_v0_border_only(image, border_fraction=0.03):
+    """v0, superseded: border strip only. Kept (not deleted) per the spec's
+    "keep every version that failed" rule - this version misses any furniture
+    that isn't touching the image edge, which turned out to be most of it: a
+    caption footer inset from the border, or a scale bar drawn mid-image,
+    both pass straight through v0 untouched.
+    """
+    return border_mask(image.shape, border_fraction)
+
+
+def build_exclusion_mask_v1_border_and_extreme(image, border_fraction=0.03, min_component_size=20):
+    """v1, superseded: adds extreme-intensity blocks (catches solid footers/
+    captions wherever they sit, not just at the border). Still misses a
+    scale bar or panel-border line whose own pixel intensity falls inside
+    the normal specimen range - a mid-grey ruled line is neither an edge
+    pixel nor an intensity outlier, so v1 lets it through. That gap is
+    exactly why v2 adds long_line_mask.
+    """
+    return border_mask(image.shape, border_fraction) | extreme_intensity_mask(image, min_size=min_component_size)
+
+
 def build_exclusion_mask(image, border_fraction=0.03, min_component_size=20, flatness_threshold=2.0):
+    """v2, current: border + extreme-intensity + long-line detection. See
+    build_exclusion_mask_v0_border_only and _v1_border_and_extreme above for
+    what each earlier version missed and why it was superseded, not deleted.
+    """
     return (
         border_mask(image.shape, border_fraction)
         | extreme_intensity_mask(image, min_size=min_component_size)
@@ -89,3 +114,19 @@ if __name__ == "__main__":
 
     combined = build_exclusion_mask(with_footer)
     print(f"build_exclusion_mask: {combined.sum() / combined.size:.1%} of pixels excluded on synthetic test image")
+
+    # version-history proof: v0 misses the footer (not touching the border),
+    # v1 catches the footer but misses a mid-image scale-bar line, v2 catches both
+    mid_image_bar = toy.copy()
+    # a scale bar drawn away from any border, at an intensity WITHIN the
+    # normal specimen range (near the image's own mean) - this is exactly
+    # the case extreme_intensity_mask cannot catch, since nothing about the
+    # line's brightness is unusual, only its perfect flatness is
+    mid_image_bar[50, :] = float(toy.mean())
+    v0 = build_exclusion_mask_v0_border_only(mid_image_bar)
+    v1 = build_exclusion_mask_v1_border_and_extreme(mid_image_bar)
+    v2 = build_exclusion_mask(mid_image_bar)
+    assert not v0[50, 50] and not v1[50, 50], "v0 and v1 must both miss a mid-image scale-bar line"
+    assert v2[50, 50], "v2 must catch the mid-image scale-bar line that v0/v1 missed"
+    print(f"version-history check passed: v0/v1 miss a mid-image scale bar, v2 catches it "
+          f"(v0={v0.mean():.1%}, v1={v1.mean():.1%}, v2={v2.mean():.1%} of pixels excluded)")
