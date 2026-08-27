@@ -1,0 +1,4 @@
+arm,mean_bootstrap_accuracy,diff_vs_a_pp,n_groups,n_bootstrap,total_gradient_steps
+a_real_only,0.5321765088708864,0.0,8,200,500
+b_real_plus_aug,0.5173045648270064,-1.4871944043880037,8,200,500
+c_real_plus_synthetic,0.5515197622368232,1.9343253365936786,8,200,500
