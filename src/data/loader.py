@@ -13,6 +13,7 @@ from guard import assert_lineage_is_test_safe, TestLeakageError  # noqa: E402
 
 _SPLIT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "experiments", "source_split_v1.json")
 _EMPS_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "AMAT", "amat4-week1", "emps", "images")
+_EMPS_SEGMAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "AMAT", "amat4-week1", "emps", "segmaps")
 
 with open(_SPLIT_PATH, "r", encoding="utf-8") as f:
     _SPLIT = json.load(f)
@@ -35,6 +36,20 @@ def load_generator_source(source_id):
     return img, source_id
 
 
+def load_generator_segmap(source_id):
+    """Load the uint16 instance-label map for one source id. Same
+    TEST-safety check as load_generator_source - a segmap is generation
+    metadata (used for label-validity measurement, not fed to the
+    generator), but it is still tied to one specific source image and must
+    honor the same hidden-test boundary.
+    """
+    assert_lineage_is_test_safe([source_id])
+    assert source_id in TRAIN_IDS or source_id in VALIDATION_IDS, f"Unknown source_id: '{source_id}'"
+
+    path = os.path.join(_EMPS_SEGMAPS_DIR, source_id + ".png")
+    return np.array(Image.open(path))
+
+
 if __name__ == "__main__":
     for sid in DEV_SOURCE_IDS:
         img, source_id = load_generator_source(sid)
@@ -42,7 +57,7 @@ if __name__ == "__main__":
         print(f"loaded {source_id}: shape={img.shape}")
 
     try:
-        load_generator_source(next(iter(TEST_IDS)))
+        load_generator_source(sorted(TEST_IDS)[0])  # deterministic - set iteration order is not stable across runs
         raise SystemExit("ERROR: TEST source was not rejected!")
     except TestLeakageError as e:
         print(f"Correctly rejected a TEST source: {e}")
