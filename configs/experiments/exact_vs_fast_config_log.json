@@ -1,0 +1,42 @@
+[
+  {
+    "config": "exact (reference)",
+    "patch_size": 4,
+    "stride": 2,
+    "mean_tolerance": null,
+    "num_steps": 15,
+    "seed": 0,
+    "time_s": 1.347,
+    "final_std": 1.23
+  },
+  {
+    "config": "approx-only (stride=2)",
+    "patch_size": 4,
+    "stride": 2,
+    "mean_tolerance": 20,
+    "num_steps": 15,
+    "seed": 0,
+    "time_s": 2.258,
+    "final_std": 1.24
+  },
+  {
+    "config": "stride-only (tol=None)",
+    "patch_size": 4,
+    "stride": 4,
+    "mean_tolerance": null,
+    "num_steps": 15,
+    "seed": 0,
+    "time_s": 0.203,
+    "final_std": 61.22
+  },
+  {
+    "config": "fast (both combined)",
+    "patch_size": 4,
+    "stride": 4,
+    "mean_tolerance": 20,
+    "num_steps": 15,
+    "seed": 0,
+    "time_s": 0.326,
+    "final_std": 65.15
+  }
+]

@@ -1,0 +1,5 @@
+config,patch_size,stride,mean_tolerance,num_steps,seed,time_s,final_std
+exact (reference),4,2,,15,0,1.347,1.23
+approx-only (stride=2),4,2,20.0,15,0,2.258,1.24
+stride-only (tol=None),4,4,,15,0,0.203,61.22
+fast (both combined),4,4,20.0,15,0,0.326,65.15

@@ -74,6 +74,33 @@ for name, cfg in configs.items():
     print(f"{name:26s}: time={dt:7.3f}s, std={final.std():6.2f}")
 """)
 
+md("""### Persisted, reproducible config/seed/output log
+
+Every number above only exists as notebook print output unless it is also
+written to a file - the spec's "deterministic seed/config/output logging"
+deliverable, made concrete rather than left as "it's all in the code".""")
+
+code("""import json
+import pandas as pd
+
+log_rows = [
+    {"config": name, "patch_size": PATCH_SIZE, "stride": cfg["stride"], "mean_tolerance": cfg["mean_tolerance"],
+     "num_steps": NUM_STEPS, "seed": SEED, "time_s": round(results[name]["time"], 3),
+     "final_std": round(float(results[name]["std"]), 2)}
+    for name, cfg in configs.items()
+]
+config_log_table = pd.DataFrame(log_rows)
+table_path = os.path.join("..", "..", "results", "tables", "exact_vs_fast_config_log.csv")
+config_log_table.to_csv(table_path, index=False)
+print(f"saved {table_path}")
+
+json_path = os.path.join("..", "..", "configs", "experiments", "exact_vs_fast_config_log.json")
+with open(json_path, "w", encoding="utf-8") as f:
+    json.dump(log_rows, f, indent=2)
+print(f"saved {json_path}")
+config_log_table
+""")
+
 md("""## 3. Classifying "approx-only": does mean-prefiltering change the
 trajectory, not just the speed?
 

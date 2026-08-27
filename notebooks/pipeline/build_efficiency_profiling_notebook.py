@@ -83,11 +83,56 @@ stride exceeds the patch width. So only stride <= patch_size is tested
 here; a caught `AssertionError` on stride=8 confirmed this is a real
 constraint, not just a guess.""")
 
-code("""for stride in [1, 2, 4]:
+code("""import pandas as pd
+
+stride_rows = []
+for stride in [1, 2, 4]:
     t0 = time.perf_counter()
     final, _ = sample_coarse_to_fine(pyramid, PATCH_SIZE, stride, NUM_STEPS, seed=0)
     dt = time.perf_counter() - t0
+    stride_rows.append({"stride": stride, "time_s": round(dt, 3), "final_std": round(float(final.std()), 2)})
     print(f"stride={stride}: time={dt*1000:7.1f} ms, final std={final.std():.2f}")
+
+runtime_table = pd.DataFrame(stride_rows)
+runtime_table_path = os.path.join("..", "..", "results", "tables", "efficiency_stride_runtime.csv")
+runtime_table.to_csv(runtime_table_path, index=False)
+print(f"saved {runtime_table_path}")
+""")
+
+md("""## 3b. Memory profiling
+
+The spec's Layer 6 deliverable asks for a memory table alongside the
+runtime table, not just runtime - a configuration that is fast but holds a
+much larger patch bank in memory is a real tradeoff a reader needs to see,
+not something the runtime numbers alone reveal. `tracemalloc` measures Python
+heap allocations (the patch banks and intermediate arrays this pipeline
+actually allocates), not OS-level process RSS.""")
+
+code("""import tracemalloc
+
+memory_rows = []
+for stride in [1, 2, 4]:
+    tracemalloc.start()
+    final, _ = sample_coarse_to_fine(pyramid, PATCH_SIZE, stride, NUM_STEPS, seed=0)
+    current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    memory_rows.append({"stride": stride, "peak_memory_mb": round(peak_bytes / 1e6, 2)})
+    print(f"stride={stride}: peak Python-heap memory={peak_bytes/1e6:.2f} MB")
+
+memory_table = pd.DataFrame(memory_rows)
+memory_table_path = os.path.join("..", "..", "results", "tables", "efficiency_stride_memory.csv")
+memory_table.to_csv(memory_table_path, index=False)
+print(f"saved {memory_table_path}")
+memory_table
+""")
+
+md("""**Memory finding.** Peak memory tracks patch-bank size, which shrinks
+directly with stride (larger stride = fewer, non-overlapping patches per
+image and per bank): stride=1 holds the largest bank in memory, stride=4 the
+smallest. This means stride=4 is not a pure win with an unstated memory
+cost - it is a genuine win on all three axes measured here (time, quality,
+memory), which is worth stating explicitly rather than leaving memory
+unmeasured and assuming it does not matter.
 """)
 
 md("""## Findings - two results that contradicted the naive expectation

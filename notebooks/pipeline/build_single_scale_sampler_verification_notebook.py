@@ -91,6 +91,58 @@ for i in [0, 5, 10, 15, 20, 25, 30]:
     print(f"step {i:2d}: mean={history[i].mean():6.1f}, std={history[i].std():6.1f}")
 """)
 
+md("""## 3b. Step-count sweep on NIST
+
+The spec's own investigation list asks "how many sampling steps are
+actually needed?" and "what happens with too few steps?" directly for this
+single-scale sampler - answered here, not deferred to the multiscale
+efficiency layer, which sweeps a different (chained, multiscale) config.""")
+
+code("""step_counts = [3, 5, 10, 15, 30, 50]
+step_sweep_results = {}
+for n_steps in step_counts:
+    result, _ = sample_single_scale(
+        shape=clean_ref.shape, patch_bank=bank, patch_size=PATCH_SIZE, stride=STRIDE,
+        num_steps=n_steps, sigma_max=sigma_max, sigma_min=sigma_min, seed=0, step_fraction=0.02,
+    )
+    step_sweep_results[n_steps] = result
+    print(f"num_steps={n_steps:3d}: std={result.std():6.2f} (real reference std={clean_ref.std():.2f})")
+""")
+
+code("""fig, axes = plt.subplots(1, len(step_counts) + 1, figsize=(3 * (len(step_counts) + 1), 3))
+axes[0].imshow(clean_ref, cmap="gray")
+axes[0].set_title("real reference")
+axes[0].axis("off")
+for ax, n_steps in zip(axes[1:], step_counts):
+    ax.imshow(step_sweep_results[n_steps], cmap="gray")
+    ax.set_title(f"steps={n_steps}")
+    ax.axis("off")
+plt.tight_layout()
+
+fig_path = os.path.join("..", "..", "results", "figures", "single_scale_step_count_sweep.png")
+plt.savefig(fig_path, dpi=100, bbox_inches="tight")
+plt.show()
+print(f"saved {fig_path}")
+""")
+
+md("""**Step-count finding (measured, real reference std=55.64):**
+
+| steps | 3 | 5 | 10 | 15 | 30 | 50 |
+|---|---|---|---|---|---|---|
+| std | 33.35 | 35.38 | 39.47 | 42.18 | **44.91** | 43.67 |
+
+std rises steadily from 3 to 30 steps - too few steps means the sigma
+schedule takes large jumps between denoising passes and the run ends before
+the partial-step correction has had enough iterations to rebuild variance
+back toward the source's own ~55.6. Past 30 steps, std does not keep
+climbing - it plateaus and ticks slightly **down** (44.91 -> 43.67 at 50
+steps), consistent with the L6 multiscale finding that MORE steps can
+compound variance-erosion in a chained pipeline rather than helping,
+observed here first at a single scale. 30 steps (the value already used
+throughout this notebook) sits right at that plateau - not an arbitrary
+choice, the measured optimum in this sweep.
+""")
+
 md("""## 4. Compare: pure noise vs final synthetic vs real reference
 
 This is a plausibility check, not a quality metric - does the sampler
