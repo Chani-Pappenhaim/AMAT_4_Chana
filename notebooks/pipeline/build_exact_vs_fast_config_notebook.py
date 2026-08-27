@@ -154,14 +154,17 @@ stride made the result both slower *and* further from the real image's
 std than stride-only by itself - the two "accelerations" do not combine
 additively; the second one is pure cost here, in both dimensions.
 
-**Practical conclusion for Layer 7:** the mean-prefiltered denoiser
-should NOT be part of the fast configuration at this bank size - it is a
-net loss, not a free speedup, and it was only ever validated in isolation
-on a much larger bank (Day 17). The single accepted "fast" configuration
-going forward is stride=4 alone: a real, measured, ~4x speedup that also
-happens to reduce the variance-collapse artifact - but it must be
-reported to Layer 7 as a deliberate quality/speed tradeoff (a different
-generative process, not a free win), not folded in silently.
+**Practical conclusion for Layer 7:** `denoise_patch_approx` stays in the
+codebase and `mean_tolerance` stays an available parameter - it is not
+useless, it is scale-dependent. At THIS bank size (small pyramid levels,
+a 64x64 image) it is a net loss and should not be turned on by default.
+Day 17 showed it does help on a much larger bank (16,256 patches). The
+single accepted "fast" DEFAULT going forward is stride=4 alone: a real,
+measured, ~4x speedup that also happens to reduce the variance-collapse
+artifact. `mean_tolerance` should be re-measured and reconsidered
+specifically at any point where Layer 7 works with a large real bank
+(e.g. full-resolution EMPS/RODARE images) rather than assumed useless
+everywhere just because it lost on this small case.
 """)
 
 nb["cells"] = cells
