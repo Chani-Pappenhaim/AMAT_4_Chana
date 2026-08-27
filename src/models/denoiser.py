@@ -28,6 +28,28 @@ def denoise_patch(noisy_patch, patch_bank, sigma):
     return denoised_flat.reshape(noisy_patch.shape), weights
 
 
+def denoise_patch_approx(noisy_patch, patch_bank, sigma, mean_tolerance):
+    """Same result as denoise_patch, computed cheaper: prefilter the bank to
+    patches whose mean is close to the query's mean (one number per patch -
+    cheap) before running the expensive full-patch distance on survivors
+    only. An approximation, not free - see the efficiency notebook for
+    whether it changes only runtime or also the output distribution.
+    """
+    noisy_flat = noisy_patch.reshape(-1)
+    bank_flat = patch_bank.reshape(patch_bank.shape[0], -1)
+
+    bank_means = bank_flat.mean(axis=1)
+    query_mean = noisy_flat.mean()
+    candidate_mask = np.abs(bank_means - query_mean) <= mean_tolerance
+
+    if not candidate_mask.any():
+        # mean_tolerance too strict for this query - fall back to the full
+        # bank rather than silently returning garbage from an empty set
+        candidate_mask[:] = True
+
+    return denoise_patch(noisy_patch, bank_flat[candidate_mask].reshape(-1, *patch_bank.shape[1:]), sigma) + (candidate_mask.sum(),)
+
+
 if __name__ == "__main__":
     # Hand-checkable toy case: three 1x2 "patches" (small enough for pen-and-paper).
     # Bank: [0, 0], [10, 10], [10, 10] - query close to the second/third patch.
@@ -80,3 +102,15 @@ if __name__ == "__main__":
     # exact copy of that one patch instead of a blend. This is the failure
     # mode the project must measure, not just avoid by accident: a
     # generator run at too-small sigma is not synthesizing, it is copying.
+
+    # denoise_patch_approx: with a generous tolerance, must match denoise_patch exactly
+    exact_denoised, exact_weights = denoise_patch(asym_query, asym_bank, sigma=1.0)
+    approx_denoised, approx_weights, n_candidates = denoise_patch_approx(asym_query, asym_bank, sigma=1.0, mean_tolerance=1000.0)
+    assert np.allclose(exact_denoised, approx_denoised)
+    assert n_candidates == len(asym_bank)
+    print(f"\napprox with generous tolerance matches exact: {exact_denoised} == {approx_denoised}")
+
+    # a mean_tolerance so strict nothing survives must fall back to the full bank, not crash
+    _, _, n_fallback = denoise_patch_approx(asym_query, asym_bank, sigma=1.0, mean_tolerance=-1.0)
+    assert n_fallback == len(asym_bank)
+    print("empty-candidate-set fallback to full bank: passed")
