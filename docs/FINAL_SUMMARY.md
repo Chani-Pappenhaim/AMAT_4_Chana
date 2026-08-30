@@ -132,10 +132,27 @@ single_scale_sampler_verification.ipynb OK
 source_safe_split_and_loader.ipynb      OK
 ```
 
-All 13 `src/` modules' own `__main__` self-tests also pass independently
-(`guard.py`, `loader.py`, `furniture.py`, `pyramid.py`, `patches.py`,
-`claims.py`, `augmentation.py`, `denoiser.py`, `sampler.py`,
+All 14 `src/` modules' own `__main__` self-tests also pass independently
+(`split.py`, `guard.py`, `loader.py`, `furniture.py`, `pyramid.py`,
+`patches.py`, `claims.py`, `augmentation.py`, `denoiser.py`, `sampler.py`,
 `patch_classifier.py`, `metrics.py`, `copying.py`, `label_validity.py`).
+
+## Notebook-to-spec mapping
+
+The spec names one deliverable notebook per layer (`L1_Data_Spine.ipynb`
+etc.). This project built one notebook per work-day instead, so several
+spec-layers map to more than one file here. Content-complete either way,
+but the names don't match 1:1 without this table:
+
+| Spec deliverable | This project's notebook(s) |
+|---|---|
+| `L1_Data_Spine.ipynb` | `source_safe_split_and_loader.ipynb`, `data_pipeline_validation.ipynb` |
+| `L2_Multiscale_Patches.ipynb` | `multiscale_patch_pipeline.ipynb` |
+| `L3_Closed_Form_Denoiser.ipynb` | `denoiser_real_patches.ipynb` (toy hand-check lives in `src/models/denoiser.py`'s own self-test, run by every `run_all.py` pass) |
+| `L4_Single_Scale_Sampler.ipynb` | `single_scale_sampler_verification.ipynb` |
+| `L5_Coarse_to_Fine_SID.ipynb` | `coarse_to_fine_sampler.ipynb`, `label_validity.ipynb` |
+| `L6_Efficiency.ipynb` | `exact_vs_fast_config.ipynb`, `efficiency_profiling.ipynb`, `approximate_denoiser.ipynb` |
+| `L7_Evaluation_and_Trust.ipynb` | `basic_evaluator.ipynb`, `copying_diagnostic.ipynb`, `downstream_experiment_setup.ipynb`, `downstream_experiment_run.ipynb`, `rodare_arm.ipynb`, plus this file as the consolidated Layer 7 gate statement |
 
 ## Where this project meets AMAT-3
 
