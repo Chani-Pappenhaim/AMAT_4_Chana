@@ -24,18 +24,28 @@ dense microstructure, not a failure of the method - and it is reported
 that way, not smoothed over.
 
 Grouping here is by **field** (one image = one field = one group) - never
-by tile, matching the spec's rule. `preprocessed/hold-out/` is RODARE's own
-held-out split, used here as the "other field" comparison group so nothing
-in this notebook's own-field vs other-field comparison mixes fields that
-were meant to stay separate.
+by tile, matching the spec's rule.
+
+**Correction (spec-audit fix): `preprocessed/hold-out/` is NOT a safe
+"other field."** Inspecting the raw archive (`data.zip`) shows
+`preprocessed/hold-out/` is built entirely from `cloud/ANP_3/` -
+WD6mm_31 through WD6mm_40 - which is exactly the instrument the spec
+quarantines ("ANP-3 shares an instrument serial with ANP-10, so it is not
+a third microscope"). An earlier version of this notebook used
+`hold-out/WD6mm_31` as the other-field comparison without checking this,
+which meant the own-field/other-field comparison silently compared
+against quarantined-instrument data instead of a second legitimate field.
+Fixed by picking the other field from `preprocessed/images/` instead - a
+field never used to build this run's generator, but from the same
+non-quarantined pool as the own field.
 """)
 
 md("""## 1. Load two real RODARE fields and their labels
 
-`preprocessed/images/` - the "own" field the generator will run on.
-`preprocessed/hold-out/` - RODARE's own held-out split, used as the
-"other field" comparison group (a different field the generator never
-touches, same role as EMPS's other-DOI comparison on Day 20).""")
+`preprocessed/images/` - the "own" field the generator will run on, and
+also where the "other field" comparison image comes from (a different
+field from the same non-quarantined pool - never `hold-out/`, which is
+ANP_3, quarantined - see the correction above).""")
 
 code("""import sys, os
 sys.path.append(os.path.join("..", "..", "src"))
@@ -58,11 +68,11 @@ from evaluation.label_validity import measure_instance_displacement
 RODARE_DIR = os.path.join("..", "..", "..", "AMAT", "rodare_4124_carbide_sem", "cloud", "preprocessed")
 
 OWN_FIELD = "WD_06mm_001"
-OTHER_FIELD = "WD6mm_31"  # from hold-out - a different field, never used to build this run's generator
+OTHER_FIELD = "WD6mm_21"  # from images/ (NOT hold-out - that's quarantined ANP_3), a different field never used to build this run's generator
 
 own_img = np.array(Image.open(os.path.join(RODARE_DIR, "images", OWN_FIELD + ".tif")))
 own_label = np.array(Image.open(os.path.join(RODARE_DIR, "labels", OWN_FIELD + "_label.png")))
-other_img = np.array(Image.open(os.path.join(RODARE_DIR, "hold-out", OTHER_FIELD + ".tif")))
+other_img = np.array(Image.open(os.path.join(RODARE_DIR, "images", OTHER_FIELD + ".tif")))
 
 print(f"own field {OWN_FIELD}: shape={own_img.shape}, dtype={own_img.dtype}")
 print(f"other field {OTHER_FIELD}: shape={other_img.shape}")
@@ -254,8 +264,12 @@ md("""## Layer 7, Day 23 status - explicit trust-boundary statement
    pixel displacement, but the label format itself (binary, not
    per-instance) means even defining "which instance moved" is already an
    approximation before generation is involved at all.
-6. **Downstream utility on RODARE:** NOT repeated here - RODARE's 36 total
-   field/hold-out pairs (vs EMPS's 310 TRAIN images across 210 DOI groups)
+6. **Downstream utility on RODARE:** NOT repeated here - RODARE's 26
+   usable, non-quarantined field images in `preprocessed/images/` (vs
+   EMPS's 310 TRAIN images across 210 DOI groups) - correction: this
+   excludes `preprocessed/hold-out/`, which is entirely quarantined ANP_3
+   data (see the correction at the top of this notebook), so the usable
+   pool is smaller than the 36 total files once thought, not larger -
    is far too small to support the same group-bootstrap methodology from
    Day 22 with any real statistical power. Flagged as an explicit
    limitation for Day 24's write-up, not silently skipped.

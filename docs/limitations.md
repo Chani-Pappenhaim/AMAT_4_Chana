@@ -30,9 +30,25 @@ result - nothing here is hidden or tuned away, per the project's own rules.
   data's actual usefulness. A stronger classifier and/or larger source
   pool is needed before this comparison means much on its own.
 - The downstream 3-arm experiment has NOT been repeated on RODARE - only
-  36 total field/hold-out pairs exist there, too small for the group-
-  bootstrap methodology used on EMPS (310 images / 210 DOI groups) to mean
-  much. Left open rather than run with inadequate statistical power.
+  26 usable, non-quarantined field images exist there (see the ANP_3 fix
+  below - smaller than the 36 total files once assumed, since 10 of those
+  36 turned out to be quarantined), too small for the group-bootstrap
+  methodology used on EMPS (310 images / 210 DOI groups) to mean much.
+  Left open rather than run with inadequate statistical power.
+- **Fixed during the spec audit (previously undetected): the RODARE
+  "other field" comparison used quarantined ANP_3 data.** The spec
+  explicitly quarantines ANP_3 ("shares an instrument serial with
+  ANP-10, so it is not a third microscope"). `rodare_arm.ipynb`
+  originally sourced its own-field/other-field comparison's "other field"
+  from `preprocessed/hold-out/`, assumed to be a generic held-out split -
+  inspecting the raw `data.zip` showed `hold-out/` is built entirely from
+  `cloud/ANP_3/` (WD6mm_31-40). Fixed by sourcing the other field from
+  `preprocessed/images/` instead (a different, non-quarantined field).
+  Re-ran the notebook: own/other-field copying rates unchanged at 0.0%/
+  0.0% and the label-validity/displacement numbers (computed from the own
+  field only) are unaffected - the fix corrects which data was compared
+  against, not the headline numbers, but the earlier comparison should not
+  have been trusted as "a second legitimate field" until this was found.
 - RODARE's evaluator/copying/label-validity numbers (Day 23) needed an
   extreme downsize (0.12x) for CPU feasibility on its much larger fields,
   which plausibly explains why several numbers looked BETTER than EMPS's
