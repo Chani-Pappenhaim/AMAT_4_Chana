@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(__file__))
-from guard import assert_lineage_is_test_safe, TestLeakageError  # noqa: E402
+from hidden_test_guard import assert_lineage_is_test_safe, TestLeakageError  # noqa: E402
 
 _SPLIT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "experiments", "source_split_v1.json")
 _EMPS_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "AMAT", "amat4-week1", "emps", "images")
