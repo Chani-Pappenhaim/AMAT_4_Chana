@@ -30,13 +30,19 @@ SRC = ROOT / "src"
 PIPELINE_DIR = ROOT / "notebooks" / "pipeline"
 
 SRC_MODULES = [
+    "schemas.py",
+    "data/grouping.py",
+    "data/sources/emps_loader.py",
+    "data/sources/nist_loader.py",
+    "data/sources/rodare_loader.py",
     "data/split.py",
     "data/loader.py",
-    "data/guard.py",
+    "data/hidden_test_guard.py",
     "data/furniture.py",
+    "data/claims.py",
+    "data/manifest.py",
     "data/pyramid.py",
     "data/patches.py",
-    "data/claims.py",
     "data/augmentation.py",
     "models/denoiser.py",
     "models/sampler.py",
