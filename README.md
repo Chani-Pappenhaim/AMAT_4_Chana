@@ -7,11 +7,17 @@ Project: Training-free, single-image synthetic electron-microscopy generation
 Current research question: Under limited real data, when and why do training-free
   synthetic microscopy images help - or harm - a downstream model on untouched
   real data?
-Current status: Layers 1-6 complete (data spine, pyramid/patches, closed-form
+Current status: Layers 1-7 complete (data spine, pyramid/patches, closed-form
   denoiser, single-scale sampler, coarse-to-fine multiscale sampler + label
-  validity, efficiency/reproducibility). Layer 7 (evaluation + trust boundary)
-  in progress: basic evaluator and copying diagnostic built and self-tested;
-  downstream 3-arm experiment and the RODARE SEM-claim arm not yet run.
+  validity, efficiency/reproducibility, evaluation + trust boundary). Layer 7
+  includes the basic evaluator, the two-stage copying diagnostic, the
+  pre-registered downstream 3-arm experiment (result: INCONCLUSIVE on EMPS -
+  see docs/limitations.md), and the RODARE SEM-claim arm. See
+  docs/FINAL_SUMMARY.md for the full Layer 7 gate statement and the
+  notebook-to-spec mapping. Open item: the shared observer/metric handoff
+  with the AMAT-3 group (spec section "Where your project meets the other
+  group") has not happened yet - it requires contact with that team, not
+  more code.
 How to run: see notebooks/exploration for the initial EDA notebooks and
   notebooks/pipeline for every later layer's notebook (built from a paired
   build_*_notebook.py script in the same folder - regenerate a notebook by
