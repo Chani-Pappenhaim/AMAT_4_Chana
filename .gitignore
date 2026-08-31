@@ -14,3 +14,15 @@ venv/
 CLAUDE.md
 personal/
 משימות שלי/
+
+# large generated result archives - 122 ablation renders, ~18MB. The headline
+# comparison grids ARE committed; this is the per-variant working archive,
+# reproducible with generate.py using the flags recorded in docs/findings.md.
+grid_artifact_fix/
+
+# throwaway debug renders dropped at the repo root during a working session
+debug_*.png
+
+# figures built only to walk through the metrics in conversation; rebuilt by
+# the scratchpad scripts, not part of the deliverable
+docs/explain/
