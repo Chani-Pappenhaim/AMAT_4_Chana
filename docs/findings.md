@@ -8,7 +8,7 @@ parentheses for the full evidence trail.
 - EMPS is heterogeneous: 465 images from 322 distinct DOI groups, up to 12
   images sharing one DOI (not independent). 366 train images / 247 DOI
   groups, 99 test / 75 DOI groups, zero image or DOI overlap.
-- The hidden-test guard (`src/data/guard.py`) correctly fires on both a
+- The hidden-test guard (`src/data/hidden_test_guard.py`) correctly fires on both a
   contaminated image id and a bare contaminated DOI - proven, not assumed.
 - Figure furniture (scale bars, panel letters, captions) excludes 12-13% of
   pixels on the 3 dev sources. Version history kept: v0 (border-only) and
@@ -77,6 +77,205 @@ parentheses for the full evidence trail.
   choice), mean displacement 11.71px. Reported separately from both the
   EMPS numbers above, per spec - see Layer 7's RODARE section for the full
   caveat on why this number should not be read as "more valid than EMPS".
+- **Patch-grid boundary artifacts, two candidate fixes tested on all 5 real
+  min-dataset images (not tuned to any single one)**: (1) widening the
+  absolute overlap by increasing patch_size 4->6 at fixed stride=2 (matching
+  the reference repo's and the frozen L2 config's overlap width) - REJECTED,
+  made blockiness measurably worse: introduced a vertical-stripe artifact in
+  391ef00939.png and a brick/tiling pattern in 802e607c7c.png that neither
+  image showed before, most likely because a larger patch is more
+  discriminative in the softmax match, pushing reconstruction closer to
+  copying a few bank patches on a still-small stride. (2) jittering the
+  patch grid's phase every denoising step instead of a fixed grid (see
+  sample_single_scale's `jitter` param) - ADOPTED as the CLI's new default:
+  no regression on any of the 5 images, and a real if
+  modest reduction in blockiness on the two images that showed it worst
+  (391ef00939.png, 802e607c7c.png). Both candidates and the unchanged
+  baseline are preserved under
+  results/generated/min data set/grid_artifact_fix/ for direct comparison.
+- **Shape loss (real discrete particles -> soft amorphous blobs), root-caused
+  and partially fixed via a per-level patch size, NOT adopted as a default**:
+  even after the grid-jitter fix above, synthetic output for images with
+  regular/periodic particle arrangements (e.g. 434e287439.png's hexagonally
+  packed spheres) lost the particles entirely - std matched the real image
+  almost exactly, but the spatial layout was a handful of soft blobs, not
+  discrete circles. Stage-by-stage tracing (diagnostic_stagebystage_baseline_
+  434e287439.png in grid_artifact_fix/) showed this is NOT a resolution
+  problem - the real coarsest pyramid level (30x36px) still shows a clearly
+  distinguishable circle lattice by eye. The failure is in the FIRST
+  noise-to-structure step (generate_coarse_sketch): at that tiny level each
+  real particle is only ~7-8px across, but patch_size=4 there (same as every
+  other level) means a patch is smaller than half a particle, so it can only
+  match/reproduce local blur fragments, never a whole discrete particle or
+  its spacing to neighbors. Every later refine_at_scale step then only ADDS
+  detail on top of that wrong layout by design (so a later scale cannot
+  drift an already-good coarse structure) - meaning a wrong coarse layout is
+  never corrected, only sharpened. This is the classical finding from Efros
+  & Leung 1999 ("Texture Synthesis by Non-parametric Sampling"): a matching
+  window smaller than a texture's own regular structure loses that
+  structure, producing something locally plausible but globally incoherent.
+  Fix tested: sample_coarse_to_fine's new coarse_patch_size/coarse_stride
+  params (default None = unchanged) use a LARGER patch (8, matching the
+  frozen L2 config's own patch_size, and roughly one real particle's width
+  at that level) only for the coarsest sketch, leaving every finer level's
+  patch_size untouched - a deliberately narrower lever than the earlier,
+  rejected "widen patch_size everywhere" candidate, specifically so it
+  cannot reintroduce that candidate's fine-level blocking regression.
+  Result across all 5 real images (see 03_coarsepatch8_*.png in
+  grid_artifact_fix/), tested broadly per the same anti-overfitting
+  discipline as above: **434e287439.png (the one clearly regular/periodic
+  image) improved dramatically** - distinct, separated, roughly correctly-
+  sized circles instead of 3-4 giant blobs (compare diagnostic_stagebystage_
+  coarsepatch8_434e287439.png stage 0 to the baseline's stage 0). The three
+  irregular-but-discrete-particle images (2807b90ea9.png rods, 391ef00939.png
+  and 586dc6cc59.png cubes/diamonds) showed **no clear improvement** -
+  still amorphous blobs, just with a differently-shaped blob boundary.
+  802e607c7c.png (sparse dots on a mostly-textureless/stochastic background,
+  the one real image with no periodic structure at all) **regressed**: a
+  new waffle-like grid texture appeared in the background and fewer of the
+  real dark particles survived as distinct dots. This is consistent with
+  Efros & Leung's own finding that a larger window only helps *regular*
+  texture and can actively hurt *stochastic* texture by over-constraining
+  it. Net: the mechanism is real and evidenced, but its benefit is
+  conditional on the image's own particle regularity, not universal -
+  exactly the kind of image-dependent tradeoff the "don't overfit" rule
+  warns against baking in as a blanket default. Left as an opt-in flag
+  (`--coarse-patch-size`/`--coarse-stride`, both default None = off) rather
+  than promoted to the CLI default. A natural next step (not attempted -
+  scope/time) is making coarse_patch_size adaptive per image (e.g. measured
+  from the image's own dominant particle scale) instead of a fixed constant.
+- **Shape loss, continued - a SECOND cause was bigger than the first, found
+  by tracing the mechanism instead of tuning the fix above**: even with
+  coarse_patch_size, particles were still soft. Re-read the reference
+  implementation this project's coarse-to-fine design is closest to (GPNN -
+  Granot et al., CVPR 2022, "Drop the GAN: In Defense of Patch Nearest
+  Neighbors as Single Image Generative Models", github.com/iyttor/GPNN,
+  model/gpnn.py) to check whether this pipeline's patch-estimation step
+  actually matches its own inspiration. It does not: this codebase's
+  denoiser (denoise_patch/denoise_patches_batch) returns a SOFTMAX-WEIGHTED
+  AVERAGE of the topk=8 nearest bank patches, whereas GPNN uses hard
+  nearest-neighbour selection (`NNs = torch.argmin(norm_dist, dim=1)`) -
+  every estimate is one exact real patch, never a blend. Averaging several
+  real patches whose particle edges sit even 1-2px apart produces a patch
+  with NO sharp edge at all, and with patch_size=4/stride=2 each output
+  pixel is already the blend of ~4 overlapping patches on top of that.
+  **Fix**: `denoiser.select_patches_nn` implements GPNN's normalized hard-NN
+  selection (`sampler`'s new `nn_alpha` param / CLI `--nn-alpha`, alpha_rel
+  in GPNN's formulation). One correction made to GPNN's own stated
+  rationale while implementing this, recorded so the mistake doesn't get
+  repeated: the normalized distance is often described as increasing
+  output diversity by preventing a few dominant bank patches from
+  "hogging" every match. MEASURED on real data (4725 queries vs 4725-patch
+  bank) this is backwards - normalization *concentrates* selection (distinct
+  patches used: 2416 at alpha_rel=1e12 (~plain NN) down to 1531 at
+  alpha_rel=0.01; max single-patch reuse 14 -> 80). What it actually does is
+  bias completeness toward rare/hard-to-match patches at the cost of
+  coherence elsewhere - a real, useful, but different effect than the one
+  usually cited for it.
+- **Shape loss, THIRD cause, found by re-examining the reconstruction step
+  itself rather than assuming hard-NN selection was sufficient**: even
+  after nn_alpha returns exact sharp real patches, `reconstruct_from_patches`
+  stitches overlapping patches back together with a plain weighted MEAN
+  (stride=2 < patch_size=4, so every output pixel is covered by ~4
+  patches). Averaging patches that disagree about where an edge sits still
+  turns that edge into a ramp - a second, independent blurring stage,
+  downstream of the first. **Fix**: `reconstruct_from_patches` gained
+  `robust_norm` (sampler/CLI: `--robust-norm`), the IRLS aggregation of
+  Kwatra et al. 2005 ("Texture Optimization for Example-based Synthesis") -
+  minimizes an r<2 norm instead of the r=2 mean, so patches that disagree
+  with the consensus lose influence instead of dragging the result toward
+  their midpoint. Verified in isolation on a contested step edge (half the
+  overlapping patches shifted 1px): plain mean gives slope 75/100 of true;
+  r=0.8 IRLS recovers 99.9/100. On the real 5-image set, though,
+  `robust_norm=0.8` measured NO further gain once nn_alpha and the fourth
+  fix below were both already active (see the ablation table below) - the
+  edge-disagreement it targets barely exists anymore once patches are
+  exact and the coarse layout is right. Kept as an opt-in flag with the
+  mechanism proven and unit-tested, not because it failed, but because it
+  had nothing left to fix in this pipeline's current state.
+- **Shape loss, FOURTH cause - the largest single measured fix, found by
+  quantifying a failure mode none of the three fixes above were built to
+  address**: even with sharp exact patches and IRLS aggregation, several
+  synthetic outputs still showed particles MERGING into connected
+  "continents" instead of staying separate - a different symptom than
+  blur. Quantified it directly instead of continuing to iterate by eye:
+  measured each real image's own particle-vs-background area fraction
+  (pixels below the midpoint of that image's 5th/95th percentile range)
+  and its histogram skew. All 5 real images are markedly asymmetric -
+  18-39% particle area, skew -1.3 to -4.3 (sparse dark particles on a
+  bright support) - while the `08_nn10_coarse8` synthetic outputs were
+  42-72% "particle" with near-zero skew. Root cause: this sampler's
+  variance-preserving renormalization (needed to stop the chained
+  refinement stages from collapsing variance, see Layer 5's std-erosion
+  finding above) only constrains the first two moments (mean, std) of the
+  output. An asymmetric bimodal histogram is not determined by its first
+  two moments, so the sampler was free to satisfy mean/std with a balanced
+  ~50/50 texture instead - exactly the observed failure, and invisible to
+  every metric used so far (fidelity/completeness/edge_ratio are all local,
+  patch- or gradient-scale; none of them see a wrong GLOBAL area fraction).
+  **Fix**: `sampler.match_histogram` (new sampler/CLI param
+  `histogram_match`/`--histogram-match`) - exact histogram specification
+  (rank-preserving remap so structure is untouched, only the tone curve
+  changes) applied at every pyramid level against that level's own real
+  histogram. This is the classical multi-scale texture-synthesis technique
+  of Heeger & Bergen 1995 ("Pyramid-Based Texture Analysis/Synthesis"), who
+  match histograms at every pyramid level for exactly this reason. Fully
+  per-image and data-driven (the reference is that image's own pyramid
+  level; no tuned constant), so it cannot encode a preference for any one
+  image's appearance.
+- **Combined result and CLI defaults, measured across all 5 real images**
+  (bidirectional fidelity/completeness per Simakov et al. 2008,
+  edge_ratio = Sobel gradient magnitude ratio, area_gap = |synthetic - real|
+  particle-area-fraction; lower fidelity/completeness/area_gap is better,
+  edge closer to 1.00 is better; full per-image breakdown and every
+  intermediate variant preserved under
+  results/generated/min data set/grid_artifact_fix/):
+
+  | variant                                    | fidelity | complete | edge | area_gap |
+  |---------------------------------------------|---------:|---------:|-----:|---------:|
+  | baseline (pre-jitter)                        |    0.443 |    0.416 | 0.80 |    0.373 |
+  | grid jitter (prior CLI default)              |    0.406 |    0.394 | 0.66 |    0.368 |
+  | coarse_patch_size=8 alone (opt-in)            |    0.404 |    0.392 | 0.68 |    0.302 |
+  | nn_alpha=1.0 alone                            |    0.454 |    0.383 | 0.92 |    0.346 |
+  | nn_alpha=1.0 + histogram_match (**new default**) | 0.325 |    0.371 | 0.78 |    0.002 |
+  | + coarse_patch_size=8 on top                  |    0.324 |    0.373 | 0.78 |    0.002 |
+  | + robust_norm=0.8 on top                      |    0.320 |    0.372 | 0.75 |    0.002 |
+
+  histogram_match is by far the largest single lever (area_gap 0.373 ->
+  0.002, a ~99% reduction; fidelity 0.44 -> ~0.33, ~25% better) - it fixes
+  a failure the other three mechanisms cannot touch, since none of them
+  constrain the global tone distribution. coarse_patch_size and robust_norm
+  each measured essentially no further gain once nn_alpha+histogram_match
+  were both active (differences within noise across all three metrics) -
+  both are real, correctly-targeted, unit-tested mechanisms, but in this
+  pipeline's current state they had nothing significant left to fix, so
+  neither was promoted to a default. **New CLI defaults: `--nn-alpha 1.0`
+  and histogram matching on** (`--no-histogram-match` to disable). Grid
+  jitter's default was RE-TESTED rather than assumed still correct once
+  hard-NN selection existed (jitter's original justification was reducing
+  softmax-averaging blur, which hard-NN also addresses, so the two
+  mechanisms could plausibly have started fighting each other): jitter+nn10
+  beats no-jitter+nn10 on every one of the four metrics (fidelity 0.454 vs
+  0.487, completeness 0.383 vs 0.398, edge 0.92 vs 1.04 [closer to 1.00,
+  not overshooting], area_gap 0.346 vs 0.349) - kept as default, now
+  additionally justified independent of the softmax-blur mechanism it was
+  originally adopted for.
+- **What is still NOT solved, stated plainly**: at these numbers, this is
+  real, measured, broad-based progress (not a point fix for one image) -
+  but it is not "solved". Per-image fidelity/completeness still range
+  0.20-0.59 across the 5 images (802e607c7c, the sparse-dot/no-periodic-
+  structure image, remains the hardest case on every metric), and several
+  outputs still show particles fused along one axis into short chains
+  rather than fully separated individuals (see 15_new_default_*.png) -
+  histogram_match fixes the AREA fraction, not each individual particle's
+  boundary against its neighbors. Candidate next steps, not yet attempted:
+  (1) an explicit particle-separation/connected-component penalty during
+  denoising, rather than relying on histogram + patch metrics as a proxy
+  for it; (2) adaptive per-image coarse_patch_size (carried over from
+  above); (3) GPNN's own full pipeline (rotation/reflection-augmented patch
+  bank, coarser-to-finer noise injection only at the coarsest level) rather
+  than this project's diffusion-derived per-level noise schedule, which
+  this investigation adopted only the NN-selection piece of.
 
 ## Layer 6 - efficiency and reproducibility
 - Runtime is dominated by the full-resolution stage: 77ms -> 190ms -> 797ms
